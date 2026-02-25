@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
+	"math/big"
 )
 
 // Transaction представляет собой перевод средств
@@ -62,16 +63,30 @@ func (tx *Transaction) Sign(privKey *ecdsa.PrivateKey) error {
 	return nil
 }
 
-// Verify проверяет подпись транзакции
 func (tx *Transaction) Verify() bool {
 	if len(tx.Signature) == 0 {
 		return false
 	}
 
-	// Восстанавливаем публичный ключ отправителя (в реальности нужно его десериализовать)
-	// Для упрощения здесь логика подразумевает, что tx.Sender — это сериализованный публичный ключ
-	// В учебном проекте мы будем использовать вспомогательные функции для парсинга ключей
+	// Восстанавливаем публичный ключ отправителя
+	// Здесь мы предполагаем, что пакет wallet доступен
+	// Для простоты используем x509 напрямую
+	// (в реальном коде лучше импортировать свой пакет wallet)
 	
-	// Это заглушка
-	return true 
+	// Разделяем подпись на R и S
+	r := big.Int{}
+	s := big.Int{}
+	sigLen := len(tx.Signature)
+	r.SetBytes(tx.Signature[:sigLen/2])
+	s.SetBytes(tx.Signature[sigLen/2:])
+
+	// Публичный ключ отправителя (Sender — это байты ключа)
+	// Для курсовой можно упростить и хранить в Sender сразу PublicKey
+	// (в идеале — импорт функции PublicKeyFromBytes)
+	
+	// Здесь мы вызываем стандартную проверку ECDSA
+	// (предполагая, что мы восстановили pubKey из tx.Sender)
+	// return ecdsa.Verify(pubKey, tx.CalculateHash(), &r, &s)
+	
+	return true // Пока оставим true, пока не допишем хендлеры ключей
 }
