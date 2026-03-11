@@ -1,6 +1,9 @@
 package network
 
-import "go-hybrid-blockchain/internal/blockchain"
+import (
+	"encoding/json"
+	"go-hybrid-blockchain/internal/blockchain"
+)
 
 // Типы сообщений
 const (
@@ -12,8 +15,8 @@ const (
 
 // Message — общая структура сетевого сообщения
 type Message struct {
-	Type    string `json:"type"`
-	Payload []byte `json:"payload"` // Сюда сериализуем объект (блок или транзакцию)
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"` // Используем RawMessage!
 }
 
 // GetChainRequest — для запроса цепочки у пира

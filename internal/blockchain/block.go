@@ -2,6 +2,8 @@ package blockchain
 
 import (
 	"time"
+	"encoding/hex"
+    "encoding/json"
 )
 
 // Block представляет единицу данных в цепи
@@ -25,4 +27,17 @@ func NewBlock(transactions []*Transaction, prevHash []byte, height int) *Block {
 		Nonce:         0,
 		Height:        height,
 	}
+}
+
+func (b *Block) MarshalJSON() ([]byte, error) {
+    type Alias Block
+    return json.Marshal(&struct {
+        *Alias
+        Hash          string `json:"hash"`
+        PrevBlockHash string `json:"prev_block_hash"`
+    }{
+        Alias:         (*Alias)(b),
+        Hash:          hex.EncodeToString(b.Hash),
+        PrevBlockHash: hex.EncodeToString(b.PrevBlockHash),
+    })
 }

@@ -1,4 +1,4 @@
-package consensus
+package blockchain
 
 import (
 	"bytes"
@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"go-hybrid-blockchain/internal/blockchain" 
 )
 
 // Difficulty — сложность майнинга (количество ведущих нулей в шестнадцатеричном хеше)
@@ -15,12 +14,12 @@ import (
 const Difficulty = 4 
 
 type ProofOfWork struct {
-	Block  *blockchain.Block
+	Block  *Block
 	Target *big.Int
 }
 
 // NewProofOfWork создает новый объект PoW для блока
-func NewProofOfWork(b *blockchain.Block) *ProofOfWork {
+func NewProofOfWork(b *Block) *ProofOfWork {
 	target := big.NewInt(1)
 	// Сдвигаем 1 на (256 - сложность) бит. 
 	// Чем больше Difficulty, тем меньше Target и тем сложнее найти хеш.

@@ -37,7 +37,6 @@ func (s *Server) Start() {
 
 	fmt.Printf("P2P Server started on port %s\n", s.Port)
 
-	// Подключаемся к уже известным пирам из конфигурации
 	for _, peer := range s.KnownPeers {
 		go s.ConnectToPeer(peer)
 	}
@@ -48,6 +47,12 @@ func (s *Server) Start() {
 			log.Println("Connection error:", err)
 			continue
 		}
+
+		s.mu.Lock()
+		s.connections = append(s.connections, conn)
+		s.mu.Unlock()
+
+		fmt.Printf("New peer connected: %s\n", conn.RemoteAddr().String())
 		go s.HandleConnection(conn)
 	}
 }
@@ -68,6 +73,37 @@ func (s *Server) ConnectToPeer(address string) {
 	
 	// Сразу запрашиваем цепочку у нового знакомого для синхронизации
 	s.SendGetChain(conn)
+}
+
+func (s *Server) SendGetChain(conn net.Conn) {
+	msg := Message{
+		Type:    TypeGetChain,
+		Payload: nil, // Для запроса полезная нагрузка не нужна
+	}
+	
+	msgBytes, _ := json.Marshal(msg)
+	conn.Write(append(msgBytes, '\n'))
+}
+
+// SendFullChain отправляет всю нашу цепочку в ответ на запрос
+func (s *Server) SendFullChain(conn net.Conn) {
+	// Получаем блоки из БД
+	blocks := s.Blockchain.GetAllBlocks()
+	
+	// Сериализуем список блоков в JSON-байты
+	payload, err := json.Marshal(blocks)
+	if err != nil {
+		log.Println("Error marshaling blocks for SendFullChain:", err)
+		return
+	}
+
+	msg := Message{
+		Type:    TypeChain,
+		Payload: payload,
+	}
+
+	msgBytes, _ := json.Marshal(msg)
+	conn.Write(append(msgBytes, '\n'))
 }
 
 // HandleConnection читает сообщения из сокета
@@ -101,6 +137,15 @@ func (s *Server) ProcessMessage(msg Message, conn net.Conn) {
 		fmt.Println("Received get_chain request")
 		s.SendFullChain(conn)
 
+	case TypeChain:
+		var receivedBlocks []*blockchain.Block
+		if err := json.Unmarshal(msg.Payload, &receivedBlocks); err != nil {
+			log.Println("Error unmarshaling chain:", err)
+			return
+		}
+		fmt.Printf("Received chain with %d blocks\n", len(receivedBlocks))
+		s.handleChainResponse(receivedBlocks)
+
 	case TypeBlock:
 		var block blockchain.Block
 		if err := json.Unmarshal(msg.Payload, &block); err != nil {
@@ -114,29 +159,38 @@ func (s *Server) ProcessMessage(msg Message, conn net.Conn) {
 	}
 }
 
-// Broadcast отправляет сообщение всем подключенным пирам
+func (s *Server) handleChainResponse(blocks []*blockchain.Block) {
+	myBlocks := s.Blockchain.GetAllBlocks()
+
+	if len(blocks) > len(myBlocks) {
+		fmt.Printf("Syncing: Local chain %d, Received chain %d\n", len(myBlocks), len(blocks))
+		for _, b := range blocks {
+			s.Blockchain.AddBlock(b) // AddBlock уже обновляет ключ "l" в базе
+		}
+		fmt.Println("Database updated with new blocks.")
+	}
+}
+
 func (s *Server) Broadcast(msgType string, payload interface{}) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	data, _ := json.Marshal(payload)
-	message := Message{Type: msgType, Payload: data}
+	// Сначала маршалим сам объект (блок или транзакцию)
+	payloadBytes, _ := json.Marshal(payload)
+
+	// Создаем сообщение с RawMessage
+	message := Message{
+		Type:    msgType,
+		Payload: payloadBytes,
+	}
+
 	msgBytes, _ := json.Marshal(message)
 	msgBytes = append(msgBytes, '\n')
 
 	for _, conn := range s.connections {
-		conn.Write(msgBytes)
+		_, err := conn.Write(msgBytes)
+		if err != nil {
+			log.Printf("Broadcast error: %v", err)
+		}
 	}
-}
-
-func (s *Server) SendGetChain(conn net.Conn) {
-	msg := Message{Type: TypeGetChain}
-	data, _ := json.Marshal(msg)
-	conn.Write(append(data, '\n'))
-}
-
-func (s *Server) SendFullChain(conn net.Conn) {
-	// В реальности тут нужно вычитать все блоки из BoltDB
-	// blocks := s.Blockchain.GetAllBlocks() 
-	// ... логика отправки ...
 }

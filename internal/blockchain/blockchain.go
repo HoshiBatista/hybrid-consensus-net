@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 
+
 	"go.etcd.io/bbolt"
 )
 
@@ -99,4 +100,71 @@ func DeserializeBlock(d []byte) *Block {
 		return nil
 	}
 	return &block
+}
+
+func (bc *Blockchain) GetAllBlocks() []*Block {
+	var blocks []*Block
+
+	// Открываем транзакцию на чтение
+	err := bc.DB.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		
+		// Начинаем с хеша последнего блока (Tip)
+		currentHash := b.Get([]byte("l"))
+
+		for len(currentHash) > 0 {
+			blockData := b.Get(currentHash)
+			if blockData == nil {
+				break
+			}
+			
+			block := DeserializeBlock(blockData)
+			// Добавляем блок в начало слайса, чтобы в итоге получить порядок от 0 до N
+			blocks = append([]*Block{block}, blocks...)
+
+			// Переходим к предыдущему хешу
+			currentHash = block.PrevBlockHash
+			
+			// Если дошли до Genesis блока, у которого нет PrevBlockHash, выходим
+			if len(currentHash) == 0 {
+				break
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Printf("Error fetching blocks from DB: %v", err)
+	}
+
+	return blocks
+}
+
+func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
+    var lastHash []byte
+    var lastHeight int
+
+    bc.DB.View(func(tx *bbolt.Tx) error {
+        b := tx.Bucket([]byte(blocksBucket))
+        lastHash = b.Get([]byte("l"))
+        
+        lastBlock := DeserializeBlock(b.Get(lastHash))
+        lastHeight = lastBlock.Height
+        return nil
+    })
+
+    // 1. Создаем заготовку блока
+    newBlock := NewBlock(transactions, lastHash, lastHeight+1)
+
+    // 2. ЗАПУСКАЕМ МАЙНИНГ
+    fmt.Println("Mining started...")
+    pow := NewProofOfWork(newBlock)
+    nonce, hash := pow.Run() // Этот метод из pow.go будет искать nonce
+
+    // 3. Устанавливаем найденные значения
+    newBlock.Nonce = nonce
+    newBlock.Hash = hash
+
+    bc.AddBlock(newBlock)
+    return newBlock
 }
