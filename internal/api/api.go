@@ -16,11 +16,16 @@ type API struct {
 func StartServer(port string, bc *blockchain.Blockchain, p2p *network.Server) {
 	nodeAPI := &API{bc, p2p}
 
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		w.Write([]byte(indexHTML))
+	})
+
 	http.HandleFunc("/chain", nodeAPI.getChain)
 	http.HandleFunc("/mine", nodeAPI.mine)
-
 	http.HandleFunc("/mine/pos", nodeAPI.minePoS)
 
+	fmt.Printf("HTTP Interface available at http://localhost:%s\n", port)
 	http.ListenAndServe(":"+port, nil)
 }
 
