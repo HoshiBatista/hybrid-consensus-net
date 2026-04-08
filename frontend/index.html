@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hybrid Consensus Network</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #07080d;
+      --surface:  #0e1117;
+      --card:     #131720;
+      --border:   rgba(255,255,255,.07);
+      --accent:   #6c63ff;
+      --green:    #00d4aa;
+      --yellow:   #ffd166;
+      --red:      #ff6b6b;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --glow:     rgba(108,99,255,.4);
+      --glow2:    rgba(0,212,170,.3);
+      --r:        14px;
+      --rs:       8px;
+      --font:     'Inter', system-ui, sans-serif;
+      --mono:     'JetBrains Mono', 'Fira Code', monospace;
+    }
+
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background:
+        radial-gradient(ellipse 90% 60% at 15% -5%,  rgba(108,99,255,.11) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 85% 105%, rgba(0,212,170,.07)  0%, transparent 55%);
+    }
+
+    .wrap { position: relative; z-index: 1; max-width: 1440px; margin: 0 auto; padding: 0 24px 64px; }
+
+    /* ── HEADER ──────────────────────────────────────── */
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 22px 0 18px;
+      border-bottom: 1px solid var(--border);
+      gap: 16px; flex-wrap: wrap;
+    }
+    .logo { display: flex; align-items: center; gap: 12px; }
+    .logo-icon {
+      width: 42px; height: 42px; border-radius: 11px;
+      background: linear-gradient(135deg, var(--accent), var(--green));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; box-shadow: 0 0 24px var(--glow);
+    }
+    .logo-text h1 {
+      font-size: 17px; font-weight: 700;
+      background: linear-gradient(90deg, #fff 0%, var(--green) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    .logo-text p { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+    .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    .pill {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 13px; border-radius: 999px;
+      font-size: 11px; font-weight: 600; letter-spacing: .3px;
+      border: 1px solid var(--border); background: var(--card); color: var(--muted);
+    }
+    .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+    .pill.live .dot { background: var(--green); box-shadow: 0 0 6px var(--green); animation: blink 2s infinite; }
+
+    /* ── CONSENSUS TOGGLE ────────────────────────────── */
+    .consensus-toggle {
+      display: flex; align-items: center;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 999px; padding: 3px; gap: 2px;
+    }
+    .ct-btn {
+      padding: 5px 14px; border-radius: 999px; border: none; cursor: pointer;
+      font-size: 11px; font-weight: 700; letter-spacing: .5px;
+      background: transparent; color: var(--muted);
+      transition: all .2s;
+    }
+    .ct-btn.active-pow {
+      background: rgba(255,209,102,.15); color: var(--yellow);
+      box-shadow: 0 0 12px rgba(255,209,102,.2);
+    }
+    .ct-btn.active-pos {
+      background: rgba(0,212,170,.15); color: var(--green);
+      box-shadow: 0 0 12px rgba(0,212,170,.2);
+    }
+    .ct-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── STATS ───────────────────────────────────────── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 14px; margin: 26px 0;
+    }
+    .stat {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 20px 22px;
+      position: relative; overflow: hidden;
+      transition: transform .2s, box-shadow .2s;
+    }
+    .stat:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,0,0,.4); }
+    .stat::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; }
+    .s1::before { background: linear-gradient(90deg,#a78bfa,transparent); }
+    .s2::before { background: linear-gradient(90deg,var(--green),transparent); }
+    .s3::before { background: linear-gradient(90deg,var(--yellow),transparent); }
+    .s4::before { background: linear-gradient(90deg,var(--red),transparent); }
+    .stat-lbl { font-size: 10px; font-weight:600; color:var(--muted); letter-spacing:.6px; text-transform:uppercase; }
+    .stat-val { font-size: 30px; font-weight:700; margin-top:8px; line-height:1; font-variant-numeric:tabular-nums; }
+    .s1 .stat-val { color:#a78bfa; }
+    .s2 .stat-val { color:var(--green); }
+    .s3 .stat-val { color:var(--yellow); }
+    .s4 .stat-val { color:#f87171; }
+    .stat-sub { font-size:10px; color:var(--muted); margin-top:5px; }
+
+    /* ── GRID ────────────────────────────────────────── */
+    .grid { display: grid; grid-template-columns: 1fr 390px; gap: 20px; align-items: start; }
+    @media(max-width:1060px){ .grid { grid-template-columns: 1fr; } }
+
+    /* ── CARD ────────────────────────────────────────── */
+    .card { background:var(--card); border:1px solid var(--border); border-radius:var(--r); overflow:hidden; }
+    .card + .card { margin-top: 16px; }
+
+    .ch { display:flex; align-items:center; justify-content:space-between; padding:16px 20px; border-bottom:1px solid var(--border); }
+    .ct { font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px; }
+    .ci { font-size:15px; }
+
+    /* ── BUTTONS ─────────────────────────────────────── */
+    .btn {
+      display:inline-flex; align-items:center; gap:7px;
+      padding:8px 15px; border-radius:var(--rs);
+      font-size:12px; font-weight:600; cursor:pointer;
+      border:none; transition:all .2s; letter-spacing:.2px;
+    }
+    .btn-ghost { background:transparent; border:1px solid var(--border); color:var(--muted); }
+    .btn-ghost:hover { background:var(--surface); color:var(--text); }
+
+    .btn-wide {
+      width:100%; justify-content:center; padding:13px;
+      font-size:13px; border-radius:var(--r);
+    }
+    .btn-mine {
+      background: linear-gradient(135deg, var(--accent), var(--green));
+      color:#fff; box-shadow: 0 0 28px var(--glow);
+    }
+    .btn-mine:hover { box-shadow: 0 0 44px var(--glow); filter:brightness(1.07); }
+    .btn-teal {
+      background: linear-gradient(135deg, var(--green), #0891b2);
+      color:#fff; box-shadow: 0 0 20px var(--glow2);
+    }
+    .btn-teal:hover { box-shadow: 0 0 34px var(--glow2); filter:brightness(1.07); }
+    .btn-yellow {
+      background: linear-gradient(135deg, #d97706, var(--yellow));
+      color:#000; box-shadow: 0 0 20px rgba(255,209,102,.25);
+    }
+    .btn-yellow:hover { filter:brightness(1.08); }
+    .btn:disabled { opacity:.45; cursor:not-allowed; filter:none !important; box-shadow:none !important; }
+
+    .spin { animation: spin .75s linear infinite; display:inline-block; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── CHAIN ───────────────────────────────────────── */
+    .chain-body { padding:18px 20px; max-height:580px; overflow-y:auto; }
+    .chain-body::-webkit-scrollbar { width:3px; }
+    .chain-body::-webkit-scrollbar-thumb { background:rgba(255,255,255,.08); border-radius:2px; }
+
+    .chain-item { display:flex; align-items:stretch; animation: si .3s ease both; }
+    @keyframes si { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:none} }
+
+    .conn { display:flex; flex-direction:column; align-items:center; width:26px; flex-shrink:0; }
+    .conn .node { width:9px; height:9px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); flex-shrink:0; margin-top:15px; }
+    .conn .line { width:2px; flex:1; background:linear-gradient(to bottom,rgba(108,99,255,.5),rgba(108,99,255,.06)); min-height:16px; }
+    .chain-item:last-child .conn .line { display:none; }
+
+    .bk {
+      flex:1; background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--r); margin:6px 0; overflow:hidden;
+      cursor:pointer; transition:border-color .2s, box-shadow .2s;
+    }
+    .bk:hover { border-color:rgba(108,99,255,.35); box-shadow:0 0 18px rgba(108,99,255,.09); }
+    .bk.genesis { border-color:rgba(0,212,170,.25); }
+
+    .bk-head {
+      display:flex; align-items:center; justify-content:space-between;
+      padding:9px 13px; border-bottom:1px solid var(--border);
+      background:rgba(255,255,255,.02);
+    }
+    .bk-h { display:flex; align-items:center; gap:8px; }
+    .ht { font-family:var(--mono); font-size:11px; font-weight:500; color:var(--accent); background:rgba(108,99,255,.1); padding:2px 8px; border-radius:4px; }
+    .gt { font-size:10px; font-weight:700; color:var(--green); background:rgba(0,212,170,.1); padding:2px 8px; border-radius:4px; letter-spacing:.5px; }
+    .bk-time { font-size:10px; color:var(--muted); }
+
+    .bk-body { padding:9px 13px; display:flex; flex-direction:column; gap:5px; }
+    .bk-row { display:flex; align-items:baseline; gap:8px; }
+    .bk-k { font-size:10px; color:var(--muted); width:76px; flex-shrink:0; font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
+    .bk-v { font-family:var(--mono); font-size:11px; word-break:break-all; opacity:.8; }
+    .tc { display:inline-flex; align-items:center; background:rgba(108,99,255,.12); color:var(--accent); border-radius:4px; padding:1px 8px; font-size:11px; font-weight:600; font-family:var(--mono); }
+
+    .bk-detail { display:none; padding:9px 13px; border-top:1px solid var(--border); }
+    .bk-detail.open { display:block; animation:fadeIn .2s; }
+    .tx-entry {
+      background:rgba(255,255,255,.025); border:1px solid var(--border);
+      border-radius:var(--rs); padding:7px 10px; margin-bottom:5px; font-size:11px;
+    }
+    .tx-r { display:flex; gap:6px; margin-bottom:2px; }
+    .tx-l { color:var(--muted); width:56px; flex-shrink:0; font-size:10px; font-weight:600; text-transform:uppercase; }
+    .tx-v { font-family:var(--mono); word-break:break-all; }
+    .amt { color:var(--green); font-weight:700; }
+
+    /* ── MEMPOOL ─────────────────────────────────────── */
+    .mp-list { max-height:210px; overflow-y:auto; }
+    .mp-list::-webkit-scrollbar { width:3px; }
+    .mp-list::-webkit-scrollbar-thumb { background:rgba(255,255,255,.07); }
+    .mp-empty { padding:26px; text-align:center; color:var(--muted); font-size:12px; }
+    .mp-empty .ei { font-size:26px; opacity:.35; margin-bottom:7px; }
+    .mp-row {
+      display:flex; align-items:center; gap:10px;
+      padding:9px 20px; border-bottom:1px solid var(--border);
+      transition:background .15s;
+    }
+    .mp-row:last-child { border-bottom:none; }
+    .mp-row:hover { background:rgba(255,255,255,.02); }
+    .mp-dot { width:7px; height:7px; border-radius:50%; background:var(--yellow); box-shadow:0 0 7px var(--yellow); flex-shrink:0; }
+    .mp-info { flex:1; min-width:0; }
+    .mp-hash { font-family:var(--mono); font-size:10px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .mp-meta { font-size:11px; color:var(--text); margin-top:2px; }
+    .mp-amt { font-weight:700; color:var(--yellow); font-size:12px; flex-shrink:0; }
+
+    /* ── RIGHT PANEL ─────────────────────────────────── */
+    .rc { display:flex; flex-direction:column; gap:16px; }
+
+    .mb-body { padding:18px 20px; }
+    .mb-stats { display:flex; gap:10px; margin-bottom:15px; }
+    .mb-stat {
+      flex:1; background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--rs); padding:10px; text-align:center;
+    }
+    .mb-val { font-size:22px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums; }
+    .mb-lbl { font-size:10px; color:var(--muted); margin-top:2px; text-transform:uppercase; letter-spacing:.4px; }
+
+    .mine-msg { border-radius:var(--rs); padding:9px 13px; margin-bottom:12px; font-size:11px; display:none; }
+    .mine-msg.show { display:block; animation:fadeIn .25s; }
+    .mine-msg.ok { background:rgba(0,212,170,.06); border:1px solid rgba(0,212,170,.2); }
+    .mine-msg.err { background:rgba(255,107,107,.06); border:1px solid rgba(255,107,107,.2); color:var(--red); }
+    .msg-title { font-weight:700; color:var(--green); margin-bottom:3px; font-size:12px; }
+
+    /* ── FORMS ───────────────────────────────────────── */
+    .fb { padding:18px 20px; }
+    .fg { margin-bottom:12px; }
+    .fl { display:block; font-size:10px; font-weight:600; color:var(--muted); margin-bottom:5px; text-transform:uppercase; letter-spacing:.5px; }
+    .fi {
+      width:100%; background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--rs); color:var(--text); font-size:12px;
+      font-family:var(--mono); padding:9px 11px; outline:none;
+      transition:border-color .2s, box-shadow .2s;
+    }
+    .fi:focus { border-color:rgba(108,99,255,.5); box-shadow:0 0 0 3px rgba(108,99,255,.1); }
+    .fi::placeholder { color:var(--muted); opacity:.45; }
+
+    .form-note {
+      font-size:10px; color:var(--muted); margin-top:4px; line-height:1.5;
+    }
+
+    .bal-result {
+      background:var(--surface); border:1px solid var(--border);
+      border-radius:var(--rs); padding:14px; text-align:center;
+      margin-top:12px; display:none;
+    }
+    .bal-result.show { display:block; animation:fadeIn .25s; }
+    .bal-addr { font-size:10px; color:var(--muted); margin-bottom:4px; font-family:var(--mono); word-break:break-all; }
+    .bal-num { font-size:28px; font-weight:700; color:var(--green); font-variant-numeric:tabular-nums; }
+    .bal-unit { font-size:11px; color:var(--muted); margin-left:4px; }
+
+    .tx-msg { border-radius:var(--rs); padding:9px 13px; margin-bottom:12px; font-size:11px; display:none; }
+    .tx-msg.show { display:block; animation:fadeIn .25s; }
+    .tx-msg.ok { background:rgba(0,212,170,.06); border:1px solid rgba(0,212,170,.2); color:var(--green); }
+    .tx-msg.err { background:rgba(255,107,107,.06); border:1px solid rgba(255,107,107,.2); color:var(--red); }
+    .tx-msg-title { font-weight:700; margin-bottom:2px; font-size:12px; }
+    .tx-msg-id { font-family:var(--mono); font-size:10px; word-break:break-all; opacity:.8; }
+
+    /* ── FAUCET ──────────────────────────────────────── */
+    .faucet-body { padding:18px 20px; }
+    .faucet-note {
+      font-size:11px; color:var(--muted); background:rgba(255,209,102,.06);
+      border:1px solid rgba(255,209,102,.15); border-radius:var(--rs);
+      padding:9px 12px; margin-bottom:14px; line-height:1.55;
+    }
+    .faucet-note strong { color:var(--yellow); }
+    .faucet-row { display:flex; gap:8px; align-items:flex-end; }
+    .faucet-row .fg { flex:1; margin-bottom:0; }
+    .faucet-result {
+      margin-top:10px; font-size:11px; color:var(--green);
+      background:rgba(0,212,170,.06); border:1px solid rgba(0,212,170,.2);
+      border-radius:var(--rs); padding:8px 12px; display:none;
+    }
+    .faucet-result.show { display:block; animation:fadeIn .25s; }
+
+    /* ── TOAST ───────────────────────────────────────── */
+    #toast {
+      position:fixed; bottom:26px; right:26px;
+      background:var(--card); border:1px solid var(--border);
+      border-radius:var(--r); padding:12px 17px;
+      font-size:12px; color:var(--text);
+      box-shadow:0 8px 30px rgba(0,0,0,.5);
+      opacity:0; pointer-events:none;
+      transform:translateY(8px);
+      transition:opacity .22s, transform .22s;
+      z-index:999; max-width:300px;
+    }
+    #toast.show { opacity:1; transform:none; }
+    #toast.ok  { border-left:3px solid var(--green); }
+    #toast.err { border-left:3px solid var(--red); }
+
+    .chain-footer {
+      padding:9px 20px; border-top:1px solid var(--border);
+      font-size:10px; color:var(--muted);
+      display:flex; align-items:center; gap:6px;
+    }
+    .live-dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:blink 2s infinite; }
+
+    .empty { padding:50px 20px; text-align:center; color:var(--muted); }
+    .empty .ei { font-size:36px; opacity:.25; margin-bottom:10px; }
+
+    @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+    ::-webkit-scrollbar { width:5px; height:5px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:rgba(255,255,255,.07); border-radius:3px; }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">⛓</div>
+      <div class="logo-text">
+        <h1>Hybrid Consensus Network</h1>
+        <p>Decentralised P2P Blockchain Node</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="pill live"><span class="dot"></span>Node Online</div>
+      <div id="height-pill" class="pill">Height —</div>
+
+      <!-- Consensus toggle -->
+      <div class="consensus-toggle">
+        <button class="ct-btn" id="btn-pow" onclick="switchConsensus('pow')">⚡ PoW</button>
+        <button class="ct-btn" id="btn-pos" onclick="switchConsensus('pos')">🪙 PoS</button>
+      </div>
+
+      <button class="btn btn-ghost" onclick="loadAll()">
+        <span id="ri">↻</span> Refresh
+      </button>
+    </div>
+  </header>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="stat s1">
+      <div class="stat-lbl">Total Blocks</div>
+      <div class="stat-val" id="s-blocks">—</div>
+      <div class="stat-sub">since genesis</div>
+    </div>
+    <div class="stat s2">
+      <div class="stat-lbl">Pending Txs</div>
+      <div class="stat-val" id="s-mempool">—</div>
+      <div class="stat-sub">in mempool</div>
+    </div>
+    <div class="stat s3">
+      <div class="stat-lbl">Chain Height</div>
+      <div class="stat-val" id="s-height">—</div>
+      <div class="stat-sub">latest block</div>
+    </div>
+    <div class="stat s4">
+      <div class="stat-lbl">Total Txs</div>
+      <div class="stat-val" id="s-txs">—</div>
+      <div class="stat-sub">across chain</div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="grid">
+
+    <!-- LEFT -->
+    <div>
+      <!-- Chain -->
+      <div class="card">
+        <div class="ch">
+          <span class="ct"><span class="ci">⛓</span> Blockchain</span>
+          <span style="font-size:10px;color:var(--muted)" id="chain-meta">Click a block to expand</span>
+        </div>
+        <div class="chain-body" id="chain-list">
+          <div class="empty"><div class="ei">📦</div><div>Loading…</div></div>
+        </div>
+        <div class="chain-footer">
+          <span class="live-dot"></span>
+          Auto-refreshes every 5 s
+        </div>
+      </div>
+
+      <!-- Mempool -->
+      <div class="card">
+        <div class="ch">
+          <span class="ct"><span class="ci">🕒</span> Mempool</span>
+          <span id="mp-count" style="font-size:11px;color:var(--muted)">0 pending</span>
+        </div>
+        <div class="mp-list" id="mp-list">
+          <div class="mp-empty"><div class="ei">📭</div>No pending transactions</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="rc">
+
+      <!-- Mine -->
+      <div class="card">
+        <div class="ch">
+          <span class="ct"><span class="ci">⚡</span> Mine Block</span>
+          <span id="cs-label" style="font-size:10px;color:var(--muted)">—</span>
+        </div>
+        <div class="mb-body">
+          <div class="mb-stats">
+            <div class="mb-stat"><div class="mb-val" id="m-pending">0</div><div class="mb-lbl">Pending Txs</div></div>
+            <div class="mb-stat"><div class="mb-val" id="m-height">0</div><div class="mb-lbl">Next Height</div></div>
+          </div>
+          <div class="mine-msg" id="mine-msg"></div>
+          <button class="btn btn-wide btn-mine" id="mine-btn" onclick="mineBlock()">
+            ⚡ Mine New Block
+          </button>
+        </div>
+      </div>
+
+      <!-- Balance -->
+      <div class="card">
+        <div class="ch"><span class="ct"><span class="ci">💰</span> Check Balance</span></div>
+        <div class="fb">
+          <div class="fg">
+            <label class="fl">Address</label>
+            <input class="fi" id="bal-addr" placeholder="any address string…" />
+          </div>
+          <button class="btn btn-wide btn-teal" onclick="checkBalance()">Check Balance</button>
+          <div class="bal-result" id="bal-result">
+            <div class="bal-addr" id="bal-addr-out"></div>
+            <div><span class="bal-num" id="bal-num">0</span><span class="bal-unit">tokens</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Faucet (for PoS testing) -->
+      <div class="card">
+        <div class="ch"><span class="ct"><span class="ci">🚰</span> Faucet</span></div>
+        <div class="faucet-body">
+          <div class="faucet-note">
+            <strong>PoS testing:</strong> Credit tokens to an address so it can act as a validator. Switch to PoS after funding at least one address.
+          </div>
+          <div class="faucet-row">
+            <div class="fg">
+              <label class="fl">Address</label>
+              <input class="fi" id="f-addr" placeholder="alice, validator1…" />
+            </div>
+            <div class="fg" style="width:90px">
+              <label class="fl">Amount</label>
+              <input class="fi" id="f-amount" type="number" value="1000" min="1" />
+            </div>
+          </div>
+          <div style="margin-top:10px">
+            <button class="btn btn-wide btn-yellow" onclick="sendFaucet()">🚰 Credit Tokens</button>
+          </div>
+          <div class="faucet-result" id="f-result"></div>
+        </div>
+      </div>
+
+      <!-- Submit Transaction -->
+      <div class="card">
+        <div class="ch">
+          <span class="ct"><span class="ci">📤</span> Submit Transaction</span>
+          <button class="btn btn-ghost" style="font-size:11px;padding:5px 10px" onclick="fillDemo()">🎲 Demo</button>
+        </div>
+        <div class="fb">
+          <div class="tx-msg" id="tx-msg"></div>
+          <div class="fg">
+            <label class="fl">Sender (hex)</label>
+            <input class="fi" id="tx-sender" placeholder="04aabb… (hex bytes)" />
+          </div>
+          <div class="fg">
+            <label class="fl">Recipient (hex)</label>
+            <input class="fi" id="tx-recipient" placeholder="04ccdd… (hex bytes)" />
+          </div>
+          <div class="fg">
+            <label class="fl">Amount</label>
+            <input class="fi" id="tx-amount" type="number" placeholder="50" min="1" />
+          </div>
+          <div class="fg">
+            <label class="fl">Signature (hex)</label>
+            <input class="fi" id="tx-sig" placeholder="any non-empty hex string for testing" />
+            <div class="form-note">
+              For testing, any non-empty hex value works (e.g. <code>deadbeef</code>). Click <strong>🎲 Demo</strong> to auto-fill.
+            </div>
+          </div>
+          <button class="btn btn-wide btn-teal" id="tx-btn" onclick="submitTx()">Submit Transaction</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  /* ─── helpers ─────────────────────────────────────── */
+  function toast(msg, type='ok') {
+    const el = document.getElementById('toast');
+    el.textContent = msg; el.className = 'show ' + type;
+    clearTimeout(el._t); el._t = setTimeout(() => el.className='', 3000);
+  }
+
+  function trunc(h, n=13) {
+    if (!h || h.length <= n*2) return h || '—';
+    return h.slice(0,n) + '…' + h.slice(-5);
+  }
+
+  function ago(ts) {
+    const s = Math.floor(Date.now()/1000 - ts);
+    if (s < 5)    return 'just now';
+    if (s < 60)   return s+'s ago';
+    if (s < 3600) return Math.floor(s/60)+'m ago';
+    return Math.floor(s/3600)+'h ago';
+  }
+
+  function randHex(bytes) {
+    return Array.from(crypto.getRandomValues(new Uint8Array(bytes)))
+      .map(b => b.toString(16).padStart(2,'0')).join('');
+  }
+
+  function animN(el, v) {
+    const old = parseInt(el.textContent)||0;
+    if (old===v) return;
+    const step = v>old?1:-1, delta = Math.abs(v-old);
+    let c=old;
+    const t = setInterval(()=>{ c+=step; el.textContent=c; if(c===v) clearInterval(t); }, Math.max(8,250/delta));
+  }
+
+  /* ─── API ─────────────────────────────────────────── */
+  async function api(path, opts={}) {
+    const r = await fetch(path, opts);
+    return { ok: r.ok, status: r.status, data: await r.json() };
+  }
+
+  /* ─── consensus toggle ────────────────────────────── */
+  let currentCs = 'pow';
+
+  function setToggle(type) {
+    currentCs = type;
+    const p = document.getElementById('btn-pow');
+    const s = document.getElementById('btn-pos');
+    p.className = 'ct-btn' + (type==='pow' ? ' active-pow' : '');
+    s.className = 'ct-btn' + (type==='pos' ? ' active-pos' : '');
+    const lbl = document.getElementById('cs-label');
+    lbl.textContent = type==='pow' ? '⚡ Proof-of-Work' : '🪙 Proof-of-Stake';
+    lbl.style.color = type==='pow' ? 'var(--yellow)' : 'var(--green)';
+  }
+
+  async function switchConsensus(type) {
+    document.getElementById('btn-pow').disabled = true;
+    document.getElementById('btn-pos').disabled = true;
+    try {
+      const { ok, data } = await api('/consensus', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ type }),
+      });
+      if (ok) {
+        setToggle(data.consensus);
+        toast('Switched to ' + data.consensus.toUpperCase(), 'ok');
+      } else {
+        toast(data.error || 'Switch failed', 'err');
+      }
+    } catch(e) {
+      toast(e.message, 'err');
+    } finally {
+      document.getElementById('btn-pow').disabled = false;
+      document.getElementById('btn-pos').disabled = false;
+    }
+  }
+
+  /* ─── render chain ────────────────────────────────── */
+  function renderChain(blocks) {
+    const el = document.getElementById('chain-list');
+    if (!blocks?.length) {
+      el.innerHTML = '<div class="empty"><div class="ei">📦</div><div>No blocks yet</div></div>';
+      return;
+    }
+    document.getElementById('chain-meta').textContent = blocks.length + ' block' + (blocks.length!==1?'s':'');
+    el.innerHTML = [...blocks].reverse().map(b => {
+      const gen = b.height === 0;
+      const txs = b.transactions || [];
+      const consInfo = b.validator
+        ? `<div class="bk-row"><span class="bk-k">Validator</span><span class="bk-v">${trunc(b.validator,10)}</span></div>`
+        : `<div class="bk-row"><span class="bk-k">Nonce</span><span class="bk-v">${b.nonce||0}</span></div>`;
+      const txRows = txs.map(tx=>`
+        <div class="tx-entry">
+          <div class="tx-r"><span class="tx-l">TxID</span><span class="tx-v">${trunc(tx.tx_id,10)}</span></div>
+          <div class="tx-r"><span class="tx-l">From</span><span class="tx-v">${trunc(tx.sender,8)}</span></div>
+          <div class="tx-r"><span class="tx-l">To</span><span class="tx-v">${trunc(tx.recipient,8)}</span></div>
+          <div class="tx-r"><span class="tx-l">Amount</span><span class="tx-v amt">${tx.amount}</span></div>
+        </div>`).join('');
+      return `
+        <div class="chain-item">
+          <div class="conn"><div class="node"></div><div class="line"></div></div>
+          <div class="bk ${gen?'genesis':''}" onclick="this.querySelector('.bk-detail')?.classList.toggle('open')">
+            <div class="bk-head">
+              <div class="bk-h">
+                <span class="ht">#${b.height}</span>
+                ${gen?'<span class="gt">GENESIS</span>':''}
+              </div>
+              <span class="bk-time">${ago(b.timestamp)}</span>
+            </div>
+            <div class="bk-body">
+              <div class="bk-row"><span class="bk-k">Hash</span><span class="bk-v">${trunc(b.hash,12)}</span></div>
+              <div class="bk-row"><span class="bk-k">Prev</span><span class="bk-v">${trunc(b.prev_block_hash,12)}</span></div>
+              ${consInfo}
+              <div class="bk-row"><span class="bk-k">Txs</span><span class="tc">${txs.length}</span></div>
+            </div>
+            ${txs.length ? `<div class="bk-detail"><div style="font-size:10px;color:var(--muted);margin-bottom:7px;font-weight:700;text-transform:uppercase;letter-spacing:.5px">Transactions</div>${txRows}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  /* ─── render mempool ──────────────────────────────── */
+  function renderMempool(data) {
+    const txs = data.transactions || [];
+    document.getElementById('mp-count').textContent = txs.length + ' pending';
+    const el = document.getElementById('mp-list');
+    if (!txs.length) {
+      el.innerHTML = '<div class="mp-empty"><div class="ei">📭</div>No pending transactions</div>';
+      return;
+    }
+    el.innerHTML = txs.map(tx=>`
+      <div class="mp-row">
+        <div class="mp-dot"></div>
+        <div class="mp-info">
+          <div class="mp-hash">${trunc(tx.tx_id,12)}</div>
+          <div class="mp-meta">${trunc(tx.sender,8)} → ${trunc(tx.recipient,8)}</div>
+        </div>
+        <div class="mp-amt">${tx.amount}</div>
+      </div>`).join('');
+  }
+
+  /* ─── update stats ────────────────────────────────── */
+  function updateStats(blocks, mp, status) {
+    const total = blocks.length;
+    const height = total>0 ? blocks[blocks.length-1].height : 0;
+    const txTotal = blocks.reduce((s,b)=>s+(b.transactions||[]).length,0);
+    const pending = mp.count||0;
+    animN(document.getElementById('s-blocks'), total);
+    animN(document.getElementById('s-mempool'), pending);
+    animN(document.getElementById('s-height'), height);
+    animN(document.getElementById('s-txs'), txTotal);
+    document.getElementById('m-pending').textContent = pending;
+    document.getElementById('m-height').textContent = total;
+    document.getElementById('height-pill').textContent = 'Height ' + height;
+    if (status) setToggle(status.consensus);
+  }
+
+  /* ─── load all ────────────────────────────────────── */
+  async function loadAll() {
+    const icon = document.getElementById('ri');
+    icon.classList.add('spin');
+    try {
+      const [rb, rm, rs] = await Promise.all([
+        api('/blocks'), api('/mempool'), api('/status')
+      ]);
+      if (rb.ok) renderChain(rb.data);
+      if (rm.ok) renderMempool(rm.data);
+      updateStats(rb.ok?rb.data:[], rm.ok?rm.data:{count:0}, rs.ok?rs.data:null);
+    } catch(e) {
+      toast('Failed to load: '+e.message, 'err');
+    } finally {
+      icon.classList.remove('spin');
+    }
+  }
+
+  /* ─── mine ────────────────────────────────────────── */
+  async function mineBlock() {
+    const btn = document.getElementById('mine-btn');
+    const msg = document.getElementById('mine-msg');
+    btn.disabled = true; btn.textContent = '⏳ Mining…';
+    msg.className = 'mine-msg'; msg.innerHTML = '';
+    try {
+      const {ok, data} = await api('/mine', {method:'POST'});
+      if (ok) {
+        msg.innerHTML = `<div class="msg-title">Block Mined!</div>Height <strong>#${data.height}</strong> &nbsp;·&nbsp; Hash: <code style="font-size:10px">${trunc(data.hash,12)}</code>`;
+        msg.className = 'mine-msg ok show';
+        toast('Block #'+data.height+' mined!', 'ok');
+        await loadAll();
+      } else {
+        msg.innerHTML = `<div class="msg-title" style="color:var(--red)">Mining failed</div>${data.error||''}`;
+        msg.className = 'mine-msg err show';
+        toast(data.error||'Mining failed', 'err');
+      }
+    } catch(e) {
+      msg.innerHTML = `<div class="msg-title" style="color:var(--red)">Error</div>${e.message}`;
+      msg.className = 'mine-msg err show';
+      toast(e.message, 'err');
+    } finally {
+      btn.disabled = false; btn.textContent = '⚡ Mine New Block';
+    }
+  }
+
+  /* ─── balance ─────────────────────────────────────── */
+  async function checkBalance() {
+    const addr = document.getElementById('bal-addr').value.trim();
+    if (!addr) { toast('Enter an address','err'); return; }
+    try {
+      const {ok, data} = await api('/balance/'+encodeURIComponent(addr));
+      if (!ok) throw new Error('HTTP '+data.status);
+      document.getElementById('bal-addr-out').textContent = data.address;
+      document.getElementById('bal-num').textContent = data.balance;
+      document.getElementById('bal-result').className = 'bal-result show';
+    } catch(e) { toast(e.message,'err'); }
+  }
+
+  /* ─── faucet ──────────────────────────────────────── */
+  async function sendFaucet() {
+    const address = document.getElementById('f-addr').value.trim();
+    const amount  = parseInt(document.getElementById('f-amount').value)||0;
+    if (!address) { toast('Enter an address','err'); return; }
+    if (!amount)  { toast('Enter an amount','err'); return; }
+    try {
+      const {ok, data} = await api('/faucet', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({address, amount}),
+      });
+      const res = document.getElementById('f-result');
+      if (ok) {
+        res.textContent = `✓ Credited ${amount} tokens → ${address}  (balance: ${data.balance})`;
+        res.className = 'faucet-result show';
+        toast('Funded '+address, 'ok');
+      } else {
+        toast(data.error||'Faucet error', 'err');
+        res.className = 'faucet-result';
+      }
+    } catch(e) { toast(e.message,'err'); }
+  }
+
+  /* ─── fill demo transaction ───────────────────────── */
+  function fillDemo() {
+    document.getElementById('tx-sender').value    = randHex(20);
+    document.getElementById('tx-recipient').value = randHex(20);
+    document.getElementById('tx-amount').value    = Math.floor(Math.random()*990)+10;
+    document.getElementById('tx-sig').value       = randHex(32);
+    document.getElementById('tx-msg').className   = 'tx-msg';
+    toast('Demo data filled','ok');
+  }
+
+  /* ─── submit tx ───────────────────────────────────── */
+  async function submitTx() {
+    const sender    = document.getElementById('tx-sender').value.trim();
+    const recipient = document.getElementById('tx-recipient').value.trim();
+    const amount    = parseInt(document.getElementById('tx-amount').value)||0;
+    const signature = document.getElementById('tx-sig').value.trim();
+    const msg       = document.getElementById('tx-msg');
+
+    if (!sender||!recipient||!amount||!signature) { toast('Fill all fields','err'); return; }
+
+    const btn = document.getElementById('tx-btn');
+    btn.disabled = true; msg.className='tx-msg';
+
+    try {
+      const {ok,data} = await api('/transactions',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({sender,recipient,amount,signature}),
+      });
+      if (ok) {
+        msg.innerHTML = `<div class="tx-msg-title">Submitted!</div><div class="tx-msg-id">TxID: ${data.tx_id}</div>`;
+        msg.className = 'tx-msg ok show';
+        ['tx-sender','tx-recipient','tx-amount','tx-sig'].forEach(id=>document.getElementById(id).value='');
+        toast('Transaction in mempool','ok');
+        await loadAll();
+      } else {
+        msg.innerHTML = `<div class="tx-msg-title">Rejected</div>${data.error}`;
+        msg.className = 'tx-msg err show';
+        toast(data.error||'Rejected','err');
+      }
+    } catch(e) {
+      msg.innerHTML = `<div class="tx-msg-title">Error</div>${e.message}`;
+      msg.className = 'tx-msg err show';
+    } finally { btn.disabled=false; }
+  }
+
+  /* ─── enter key shortcuts ─────────────────────────── */
+  document.getElementById('bal-addr').addEventListener('keydown', e=>{ if(e.key==='Enter') checkBalance(); });
+
+  /* ─── init ────────────────────────────────────────── */
+  loadAll();
+  setInterval(loadAll, 5000);
+</script>
+</body>
+</html>

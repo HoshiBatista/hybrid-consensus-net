@@ -3,29 +3,39 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
+
 	"go-hybrid-blockchain/internal/api"
 	"go-hybrid-blockchain/internal/blockchain"
-	"go-hybrid-blockchain/internal/network"
-	"strings"
+	"go-hybrid-blockchain/internal/consensus"
 )
 
 func main() {
-	port := flag.String("port", "9000", "Port for P2P server")
-	apiPort := flag.String("api", "8080", "Port for HTTP API") 
-	peersStr := flag.String("peers", "", "Comma separated list of peers")
-	dbFile := flag.String("db", "blockchain.db", "Database file name")
+	dbFile       := flag.String("db",         "blockchain.db", "Path to the bbolt database file")
+	listenAddr   := flag.String("addr",       ":8080",         "HTTP API listen address")
+	consensusType := flag.String("consensus", "pow",           "Consensus mechanism: pow or pos")
+	powDifficulty := flag.Int("difficulty",   4,               "PoW difficulty (ignored for PoS)")
 	flag.Parse()
 
-	var peers []string
-	if *peersStr != "" {
-		peers = strings.Split(*peersStr, ",")
+	bc := blockchain.CreateBlockchain(*dbFile)
+	defer bc.DB.Close()
+
+	state   := blockchain.NewState()
+	mempool := blockchain.NewMempool()
+
+	var cs consensus.Consensus
+	switch *consensusType {
+	case "pos":
+		cs = consensus.NewProofOfStake(state)
+	default:
+		cs = consensus.NewProofOfWork(*powDifficulty)
 	}
 
-	bc := blockchain.CreateBlockchain(*dbFile)
-	p2pServer := network.NewServer(*port, peers, bc)
-	
-	go p2pServer.Start()
+	fmt.Printf("Node started  chain-tip=%x  consensus=%s  api=%s\n",
+		bc.Tip, cs.Type(), *listenAddr)
 
-	fmt.Printf("HTTP API started on port %s\n", *apiPort)
-	api.StartServer(*apiPort, bc, p2pServer)
+	srv := api.NewServer(bc, state, mempool, cs, *powDifficulty)
+	if err := srv.Run(*listenAddr); err != nil {
+		log.Fatalf("API server error: %v", err)
+	}
 }

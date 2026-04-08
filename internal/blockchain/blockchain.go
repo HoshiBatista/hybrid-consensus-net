@@ -1,170 +1,149 @@
 package blockchain
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
-
 
 	"go.etcd.io/bbolt"
 )
 
-const dbFile = "blockchain.db"
 const blocksBucket = "blocks"
 
-// Blockchain управляет связью с базой данных и хранит хеш последнего блока
+// Blockchain manages the persistent chain of blocks. Tip holds the hash of
+// the most recent block; all blocks are stored in a bbolt database keyed by
+// their hash.
 type Blockchain struct {
-	Tip []byte   // Хеш последнего блока в цепочке
+	Tip []byte
 	DB  *bbolt.DB
 }
 
-// CreateBlockchain открывает БД и создает Genesis блок, если цепь пуста
-func CreateBlockchain(dbFile string) *Blockchain {
+// CreateBlockchain opens (or creates) the bbolt database at dbPath and
+// ensures a genesis block exists. The genesis block uses 32 zero bytes as a
+// fixed sentinel hash so every fresh chain starts from the same known state.
+func CreateBlockchain(dbPath string) *Blockchain {
 	var tip []byte
-	db, err := bbolt.Open(dbFile, 0600, nil)
+
+	db, err := bbolt.Open(dbPath, 0600, nil)
 	if err != nil {
-		log.Panic("Could not open bbolt db:", err)
+		log.Panicf("blockchain: open db %q: %v", dbPath, err)
 	}
 
 	err = db.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 
-		// Если бакета (таблицы) нет, создаем её и Genesis блок
 		if b == nil {
-			fmt.Println("No existing blockchain found. Creating genesis...")
+			fmt.Println("No existing blockchain found. Creating genesis block...")
+
 			genesis := NewBlock([]*Transaction{}, []byte{}, 0)
-			// Задаем начальный хеш вручную для Genesis блока
-			genesis.Hash = []byte("00000000000000000000000000000000") 
+			genesis.Hash = make([]byte, 32) // 32 zero bytes as genesis sentinel
 
-			bucket, err := tx.CreateBucket([]byte(blocksBucket))
-			if err != nil {
-				return err
+			bucket, createErr := tx.CreateBucket([]byte(blocksBucket))
+			if createErr != nil {
+				return fmt.Errorf("create bucket: %w", createErr)
 			}
-
-			// Сохраняем блок: ключ - его хеш, значение - сериализованные данные
-			err = bucket.Put(genesis.Hash, genesis.Serialize())
-			// "l" - специальный ключ, хранящий хеш последнего блока (Last)
-			err = bucket.Put([]byte("l"), genesis.Hash)
+			if err := bucket.Put(genesis.Hash, genesis.Serialize()); err != nil {
+				return fmt.Errorf("store genesis block: %w", err)
+			}
+			if err := bucket.Put([]byte("l"), genesis.Hash); err != nil {
+				return fmt.Errorf("store chain tip: %w", err)
+			}
 			tip = genesis.Hash
 		} else {
-			// Если база есть, просто читаем хеш последнего блока
 			tip = b.Get([]byte("l"))
 		}
 
 		return nil
 	})
-
 	if err != nil {
-		log.Panic(err)
+		log.Panicf("blockchain: init: %v", err)
 	}
 
-	return &Blockchain{tip, db}
+	return &Blockchain{Tip: tip, DB: db}
 }
 
-// AddBlock сохраняет новый блок в базу данных
+// AddBlock persists block to the database and advances the chain tip.
 func (bc *Blockchain) AddBlock(block *Block) {
 	err := bc.DB.Update(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 
-		// Сохраняем сам блок
-		err := b.Put(block.Hash, block.Serialize())
-		if err != nil {
-			return err
+		if err := b.Put(block.Hash, block.Serialize()); err != nil {
+			return fmt.Errorf("store block: %w", err)
 		}
-
-		// Обновляем указатель на последний блок
-		err = b.Put([]byte("l"), block.Hash)
-		if err != nil {
-			return err
+		if err := b.Put([]byte("l"), block.Hash); err != nil {
+			return fmt.Errorf("update tip: %w", err)
 		}
 
 		bc.Tip = block.Hash
 		return nil
 	})
 	if err != nil {
-		log.Panic(err)
+		log.Panicf("blockchain: AddBlock: %v", err)
 	}
 }
 
-// Serialize переводит блок в JSON-байты (для хранения в БД)
-func (b *Block) Serialize() []byte {
-	data, _ := json.Marshal(b)
-	return data
-}
-
-// DeserializeBlock восстанавливает блок из байтов
-func DeserializeBlock(d []byte) *Block {
-	var block Block
-	err := json.Unmarshal(d, &block)
-	if err != nil {
-		return nil
+// ValidateChain iterates every block from genesis to tip and verifies two
+// invariants for each block:
+//
+//  1. The block's Hash is non-empty (it was finalised by a consensus engine).
+//  2. The block's PrevBlockHash exactly matches the preceding block's Hash,
+//     ensuring the chain is unbroken and no block has been silently replaced.
+//
+// An optional validateFn can be supplied to add consensus-specific checks
+// (e.g. PoW target, PoS validator). Pass nil to skip that check.
+// Returns true only when all blocks satisfy both invariants.
+func (bc *Blockchain) ValidateChain(validateFn func(*Block) bool) bool {
+	blocks := bc.GetAllBlocks()
+	if len(blocks) == 0 {
+		return true
 	}
-	return &block
+
+	// Genesis block: PrevBlockHash must be empty (all-zero sentinel).
+	if !blocks[0].IsValid(blocks[0].PrevBlockHash) {
+		return false
+	}
+	if validateFn != nil && !validateFn(blocks[0]) {
+		return false
+	}
+
+	for i := 1; i < len(blocks); i++ {
+		if !blocks[i].IsValid(blocks[i-1].Hash) {
+			return false
+		}
+		if validateFn != nil && !validateFn(blocks[i]) {
+			return false
+		}
+	}
+	return true
 }
 
+// GetAllBlocks iterates from the tip back to genesis and returns the full
+// chain ordered oldest-first. The loop terminates naturally when it reaches
+// the genesis block whose PrevBlockHash is an empty slice.
 func (bc *Blockchain) GetAllBlocks() []*Block {
 	var blocks []*Block
 
-	// Открываем транзакцию на чтение
 	err := bc.DB.View(func(tx *bbolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
-		
-		// Начинаем с хеша последнего блока (Tip)
 		currentHash := b.Get([]byte("l"))
 
 		for len(currentHash) > 0 {
-			blockData := b.Get(currentHash)
-			if blockData == nil {
+			data := b.Get(currentHash)
+			if data == nil {
 				break
 			}
-			
-			block := DeserializeBlock(blockData)
-			// Добавляем блок в начало слайса, чтобы в итоге получить порядок от 0 до N
-			blocks = append([]*Block{block}, blocks...)
-
-			// Переходим к предыдущему хешу
+			block := DeserializeBlock(data)
+			if block == nil {
+				break
+			}
+			blocks = append([]*Block{block}, blocks...) // prepend → oldest-first result
 			currentHash = block.PrevBlockHash
-			
-			// Если дошли до Genesis блока, у которого нет PrevBlockHash, выходим
-			if len(currentHash) == 0 {
-				break
-			}
 		}
+
 		return nil
 	})
-
 	if err != nil {
-		log.Printf("Error fetching blocks from DB: %v", err)
+		log.Printf("blockchain: GetAllBlocks: %v", err)
 	}
 
 	return blocks
-}
-
-func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
-    var lastHash []byte
-    var lastHeight int
-
-    bc.DB.View(func(tx *bbolt.Tx) error {
-        b := tx.Bucket([]byte(blocksBucket))
-        lastHash = b.Get([]byte("l"))
-        
-        lastBlock := DeserializeBlock(b.Get(lastHash))
-        lastHeight = lastBlock.Height
-        return nil
-    })
-
-    // 1. Создаем заготовку блока
-    newBlock := NewBlock(transactions, lastHash, lastHeight+1)
-
-    // 2. ЗАПУСКАЕМ МАЙНИНГ
-    fmt.Println("Mining started...")
-    pow := NewProofOfWork(newBlock)
-    nonce, hash := pow.Run() // Этот метод из pow.go будет искать nonce
-
-    // 3. Устанавливаем найденные значения
-    newBlock.Nonce = nonce
-    newBlock.Hash = hash
-
-    bc.AddBlock(newBlock)
-    return newBlock
 }
